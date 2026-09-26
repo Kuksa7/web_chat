@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Универсальный ИИ-Чат с API</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f3ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            900: '#312e81',
+                        },
+                        darkbg: '#0f172a',
+                        cardbg: '#1e293b',
+                        hoverbg: '#334155'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Google Fonts Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Highlight.js for Syntax Highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    
+    <!-- Marked.js for Markdown Parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+            color: #f1f5f9;
+        }
+        
+        pre code.hljs {
+            font-family: 'Fira Code', monospace;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            font-size: 0.875rem;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0b0f19;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* Reasoning Spoiler Styling */
+        details.reasoning-box[open] summary svg {
+            transform: rotate(180deg);
+        }
+        
+        /* Pulse Animation for Streaming */
+        .cursor-blink::after {
+            content: '▋';
+            animation: blink 1s infinite;
+            color: #818cf8;
+            margin-left: 2px;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body class="h-screen flex overflow-hidden antialiased select-none">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Sidebar Backdrop for Mobile -->
+    <div id="sidebar-backdrop" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 hidden md:hidden transition-opacity"></div>
+
+    <!-- Sidebar / Settings Panel -->
+    <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-40 w-80 bg-slate-900/95 border-r border-slate-800 flex flex-col transition-transform duration-300 transform -translate-x-full md:translate-x-0">
+        
+        <!-- Sidebar Header -->
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                    <i data-lucide="bot" class="w-5 h-5 text-white"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-slate-100 text-sm leading-tight">Universal AI Studio</h1>
+                    <span class="text-[11px] text-slate-400 font-medium">OpenRouter & Custom API</span>
+                </div>
+            </div>
+            <button id="close-sidebar-btn" class="md:hidden p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <!-- Sidebar Scrollable Settings Content -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-6">
+
+            <!-- API Key & Endpoint Section -->
+            <div class="space-y-3">
+                <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <i data-lucide="key" class="w-3.5 h-3.5 text-indigo-400"></i> Настройки API
+                </label>
+
+                <div>
+                    <div class="text-xs text-slate-300 mb-1 font-medium">API Key</div>
+                    <div class="relative">
+                        <input type="password" id="api-key-input" placeholder="sk-or-v1-..." 
+                            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 pr-9 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors">
+                        <button id="toggle-key-visibility" class="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300">
+                            <i data-lucide="eye" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-slate-500 mt-1">Ключ сохраняется исключительно в вашем браузере.</p>
+                </div>
+
+                <div>
+                    <div class="text-xs text-slate-300 mb-1 font-medium">Base Endpoint URL</div>
+                    <input type="text" id="api-url-input" value="https://openrouter.ai/api/v1/chat/completions" 
+                        class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors">
+                </div>
+            </div>
+
+            <!-- Model Selection Section -->
+            <div class="space-y-3 border-t border-slate-800 pt-5">
+                <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <i data-lucide="cpu" class="w-3.5 h-3.5 text-cyan-400"></i> Выбор Модели
+                </label>
+
+                <div>
+                    <select id="model-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer">
+                        <optgroup label="🔥 Бесплатные модели (OpenRouter)">
+                            <option value="deepseek/deepseek-r1:free" selected>DeepSeek R1 (Free) — Ризонинг</option>
+                            <option value="qwen/qwen-2.5-coder-32b-instruct:free">Qwen 2.5 Coder 32B (Free) — Код</option>
+                            <option value="google/gemini-2.0-flash-exp:free">Gemini 2.0 Flash (Free) — Быстрый</option>
+                            <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (Free) — Мощный</option>
+                        </optgroup>
+                        <optgroup label="⚡ Топовые платные модели">
+                            <option value="deepseek/deepseek-chat">DeepSeek V3</option>
+                            <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+                            <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+                            <option value="openai/gpt-4o">GPT-4o</option>
+                        </optgroup>
+                        <option value="custom">-- Ввести свой ID модели --</option>
+                    </select>
+                </div>
+
+                <!-- Custom Model Input (Hidden by default) -->
+                <div id="custom-model-container" class="hidden">
+                    <input type="text" id="custom-model-input" placeholder="например: mistralai/mistral-large" 
+                        class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors">
+                </div>
+            </div>
+
+            <!-- System Prompt & Presets -->
+            <div class="space-y-3 border-t border-slate-800 pt-5">
+                <div class="flex items-center justify-between">
+                    <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i data-lucide="sliders" class="w-3.5 h-3.5 text-emerald-400"></i> Системный Промпт
+                    </label>
+                </div>
+
+                <!-- Presets Quick Buttons -->
+                <div class="grid grid-cols-2 gap-1.5">
+                    <button data-preset="assistant" class="preset-btn text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 py-1.5 px-2 rounded-md transition text-left truncate">
+                        🤖 Ассистент
+                    </button>
+                    <button data-preset="coder" class="preset-btn text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 py-1.5 px-2 rounded-md transition text-left truncate">
+                        💻 Веб-Разработчик
+                    </button>
+                    <button data-preset="prompter" class="preset-btn text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 py-1.5 px-2 rounded-md transition text-left truncate">
+                        🎨 Промпт-Инженер
+                    </button>
+                    <button data-preset="critic" class="preset-btn text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 py-1.5 px-2 rounded-md transition text-left truncate">
+                        🔍 Отладка Кода
+                    </button>
+                </div>
+
+                <textarea id="system-prompt" rows="3" placeholder="Инструкция для модели..."
+                    class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors resize-none">Ты — вежливый, разумный и полезный ИИ-помощник. Отвечай четко, структурированно и на русском языке.</textarea>
+            </div>
+
+            <!-- Generation Parameters -->
+            <div class="space-y-4 border-t border-slate-800 pt-5">
+                <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <i data-lucide="settings-2" class="w-3.5 h-3.5 text-amber-400"></i> Параметры
+                </label>
+
+                <!-- Temperature Slider -->
+                <div>
+                    <div class="flex justify-between text-xs text-slate-300 mb-1">
+                        <span>Креативность (Temperature):</span>
+                        <span id="temp-value" class="font-mono text-indigo-400 font-semibold">0.7</span>
+                    </div>
+                    <input type="range" id="temp-slider" min="0" max="2" step="0.1" value="0.7" 
+                        class="w-full accent-indigo-500 bg-slate-950 h-1.5 rounded-lg cursor-pointer">
+                </div>
+
+                <!-- Max Tokens Slider -->
+                <div>
+                    <div class="flex justify-between text-xs text-slate-300 mb-1">
+                        <span>Макс. токенов:</span>
+                        <span id="tokens-value" class="font-mono text-indigo-400 font-semibold">4096</span>
+                    </div>
+                    <input type="range" id="tokens-slider" min="256" max="8192" step="256" value="4096" 
+                        class="w-full accent-indigo-500 bg-slate-950 h-1.5 rounded-lg cursor-pointer">
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Sidebar Footer -->
+        <div class="p-4 border-t border-slate-800 bg-slate-950/50 flex items-center justify-between">
+            <button id="clear-chat-btn" class="flex items-center gap-2 text-xs text-rose-400 hover:text-rose-300 px-3 py-2 rounded-lg hover:bg-rose-500/10 transition">
+                <i data-lucide="trash-2" class="w-4 h-4"></i> Очистить диалог
+            </button>
+            <span class="text-[10px] text-slate-600 font-mono">v1.2.0</span>
+        </div>
+    </aside>
+
+    <!-- Main Chat Workspace -->
+    <main class="flex-1 flex flex-col h-full bg-slate-950 relative overflow-hidden">
+
+        <!-- Top Header Bar -->
+        <header class="h-14 border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md px-4 flex items-center justify-between z-10">
+            <div class="flex items-center gap-3">
+                <button id="open-sidebar-btn" class="md:hidden p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+                    <i data-lucide="menu" class="w-5 h-5"></i>
+                </button>
+                
+                <div class="flex items-center gap-2">
+                    <div id="status-indicator" class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50"></div>
+                    <div class="flex flex-col">
+                        <span id="active-model-display" class="text-xs font-semibold text-slate-200">DeepSeek R1 Free</span>
+                        <span id="status-text" class="text-[10px] text-slate-400">Готов к диалогу</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Controls Header -->
+            <div class="flex items-center gap-2">
+                <button id="export-chat-btn" title="Экспорт истории" class="p-2 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-slate-800 transition">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Chat Messages Scroll Area -->
+        <div id="chat-messages" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+            
+            <!-- Welcome Empty State -->
+            <div id="empty-state" class="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto my-auto py-12 px-4">
+                <div class="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mb-4 text-indigo-400">
+                    <i data-lucide="sparkles" class="w-8 h-8"></i>
+                </div>
+                <h2 class="text-xl font-bold text-slate-100 mb-2">Универсальный ИИ-Ассистент</h2>
+                <p class="text-xs text-slate-400 mb-6 leading-relaxed">
+                    Введите ваш API Key в левой панели для начала работы. Поддерживает автоматическое сворачивание рассуждений (Reasoning), подсветку кода и сохранение истории.
+                </p>
+                
+                <div class="grid grid-cols-1 gap-2 w-full text-left">
+                    <button class="quick-prompt p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-850 transition text-xs text-slate-300 flex items-center justify-between group">
+                        <span>Напиши HTML/JS веб-плеер с плейлистом</span>
+                        <i data-lucide="arrow-right" class="w-4 h-4 text-slate-500 group-hover:text-indigo-400 transition"></i>
+                    </button>
+                    <button class="quick-prompt p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-850 transition text-xs text-slate-300 flex items-center justify-between group">
+                        <span>Объясни как работает Ризонинг в LLM</span>
+                        <i data-lucide="arrow-right" class="w-4 h-4 text-slate-500 group-hover:text-indigo-400 transition"></i>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom User Input Area -->
+        <div class="p-4 border-t border-slate-800/80 bg-slate-900/40 backdrop-blur-md">
+            <div class="max-w-4xl mx-auto relative">
+                
+                <form id="chat-form" class="relative bg-slate-900 border border-slate-800 rounded-2xl shadow-xl focus-within:border-indigo-500/80 transition-colors overflow-hidden">
+                    <textarea id="user-input" rows="1" placeholder="Задайте вопрос или отправьте задачу... (Shift+Enter для новой строки)" 
+                        class="w-full bg-transparent p-3.5 pr-12 text-sm text-slate-100 placeholder-slate-500 focus:outline-none resize-none max-h-48 overflow-y-auto leading-relaxed"></textarea>
+                    
+                    <div class="flex items-center justify-between px-3 py-2 bg-slate-900/80 border-t border-slate-800/40">
+                        <div class="flex items-center gap-2 text-[11px] text-slate-500">
+                            <span id="char-counter">0 символов</span>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <button type="submit" id="send-btn" 
+                                class="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-xl transition shadow-md shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                                <i data-lucide="send" class="w-4 h-4"></i>
+                            </button>
+                            <button type="button" id="stop-btn" class="hidden bg-rose-600 hover:bg-rose-500 text-white p-2 rounded-xl transition flex items-center justify-center">
+                                <i data-lucide="square" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <p class="text-[10px] text-center text-slate-500 mt-2">
+                    Ответы ИИ генерируются на основе выбранной модели через API. Проверяйте важную информацию.
+                </p>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // System Prompt Presets
+        const PRESETS = {
+            assistant: "Ты — вежливый, разумный и полезный ИИ-помощник. Отвечай четко, структурированно и на русском языке.",
+            coder: "Ты — эксперт в веб-разработке (HTML5, Tailwind CSS, JavaScript). Пиши чистый, рабочий и оптимизированный код в едином файле. Если задают вопрос по ошибке — объясни причину и дай готовое исправление.",
+            prompter: "Ты — профессиональный промпт-инженер для Midjourney, Stable Diffusion и Flux. Составляй детальные, эффективные промпты на английском языке с описанием стиля, освещения, ракурса и деталей.",
+            critic: "Ты — строгий код-ревьюер и специалист по отладке. Тщательно анализируй предоставленный код на баги, логические ошибки, проблемы с производительностью и предлагай лучшие исправления."
+        };
+
+        // Application State
+        const state = {
+            apiKey: localStorage.getItem('app_api_key') || '',
+            apiUrl: localStorage.getItem('app_api_url') || 'https://openrouter.ai/api/v1/chat/completions',
+            selectedModel: localStorage.getItem('app_selected_model') || 'deepseek/deepseek-r1:free',
+            customModel: localStorage.getItem('app_custom_model') || '',
+            systemPrompt: localStorage.getItem('app_system_prompt') || PRESETS.assistant,
+            temperature: parseFloat(localStorage.getItem('app_temperature') || '0.7'),
+            maxTokens: parseInt(localStorage.getItem('app_max_tokens') || '4096'),
+            messages: JSON.parse(localStorage.getItem('app_chat_history') || '[]'),
+            isGenerating: false,
+            abortController: null
+        };
+
+        // Configure Marked.js
+        marked.setOptions({
+            highlight: function(code, lang) {
+                const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+                return hljs.highlight(code, { language }).value;
+            },
+            langPrefix: 'hljs language-',
+            breaks: true
+        });
+
+        // Custom Renderer to Add Copy Button to Code Blocks
+        const renderer = new marked.Renderer();
+        renderer.code = function(code, language) {
+            const validLang = language || 'text';
+            const highlighted = hljs.getLanguage(validLang) 
+                ? hljs.highlight(code, { language: validLang }).value 
+                : hljs.highlightAuto(code).value;
+
+            return `
+                <div class="code-wrapper relative my-4 rounded-lg overflow-hidden border border-slate-800 bg-slate-900 group">
+                    <div class="flex items-center justify-between px-4 py-1.5 bg-slate-900 border-b border-slate-800 text-xs text-slate-400">
+                        <span class="font-mono text-[11px] uppercase">${validLang}</span>
+                        <button onclick="copyCodeToClipboard(this)" class="flex items-center gap-1 hover:text-slate-200 transition py-0.5 px-2 rounded bg-slate-800/80 hover:bg-slate-700">
+                            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                            <span>Копировать</span>
+                        </button>
+                    </div>
+                    <pre class="p-4 overflow-x-auto text-xs font-mono text-slate-200 leading-relaxed"><code>${highlighted}</code></pre>
+                </div>
+            `;
+        };
+        marked.use({ renderer });
+
+        // DOM Elements
+        const elements = {
+            sidebar: document.getElementById('sidebar'),
+            sidebarBackdrop: document.getElementById('sidebar-backdrop'),
+            openSidebarBtn: document.getElementById('open-sidebar-btn'),
+            closeSidebarBtn: document.getElementById('close-sidebar-btn'),
+            apiKeyInput: document.getElementById('api-key-input'),
+            toggleKeyVisibilityBtn: document.getElementById('toggle-key-visibility'),
+            apiUrlInput: document.getElementById('api-url-input'),
+            modelSelect: document.getElementById('model-select'),
+            customModelContainer: document.getElementById('custom-model-container'),
+            customModelInput: document.getElementById('custom-model-input'),
+            systemPromptInput: document.getElementById('system-prompt'),
+            tempSlider: document.getElementById('temp-slider'),
+            tempValue: document.getElementById('temp-value'),
+            tokensSlider: document.getElementById('tokens-slider'),
+            tokensValue: document.getElementById('tokens-value'),
+            chatMessages: document.getElementById('chat-messages'),
+            emptyState: document.getElementById('empty-state'),
+            chatForm: document.getElementById('chat-form'),
+            userInput: document.getElementById('user-input'),
+            sendBtn: document.getElementById('send-btn'),
+            stopBtn: document.getElementById('stop-btn'),
+            clearChatBtn: document.getElementById('clear-chat-btn'),
+            exportChatBtn: document.getElementById('export-chat-btn'),
+            activeModelDisplay: document.getElementById('active-model-display'),
+            statusIndicator: document.getElementById('status-indicator'),
+            statusText: document.getElementById('status-text'),
+            charCounter: document.getElementById('char-counter')
+        };
+
+        // Initialize UI from Saved State
+        function initUI() {
+            elements.apiKeyInput.value = state.apiKey;
+            elements.apiUrlInput.value = state.apiUrl;
+            elements.systemPromptInput.value = state.systemPrompt;
+            elements.tempSlider.value = state.temperature;
+            elements.tempValue.textContent = state.temperature;
+            elements.tokensSlider.value = state.maxTokens;
+            elements.tokensValue.textContent = state.maxTokens;
+
+            // Handle Model Selector Dropdown
+            const isCustom = !Array.from(elements.modelSelect.options).some(opt => opt.value === state.selectedModel);
+            if (isCustom && state.selectedModel) {
+                elements.modelSelect.value = 'custom';
+                elements.customModelContainer.classList.remove('hidden');
+                elements.customModelInput.value = state.selectedModel;
+            } else {
+                elements.modelSelect.value = state.selectedModel;
+            }
+
+            updateActiveModelBadge();
+            renderChatHistory();
+            lucide.createIcons();
+        }
+
+        // Display Toasts instead of alerts
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const bgClass = type === 'error' ? 'bg-rose-950 border-rose-800 text-rose-200' : 'bg-slate-900 border-slate-700 text-slate-200';
+            const icon = type === 'error' ? 'alert-circle' : 'check-circle-2';
+            
+            toast.className = `pointer-events-auto flex items-center gap-2 px-4 py-3 rounded-xl border ${bgClass} shadow-xl text-xs transition-all duration-300 transform translate-y-2 opacity-0`;
+            toast.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4"></i><span>${message}</span>`;
+            
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Get Active Model ID string
+        function getActiveModelId() {
+            if (elements.modelSelect.value === 'custom') {
+                return elements.customModelInput.value.trim() || 'deepseek/deepseek-r1:free';
+            }
+            return elements.modelSelect.value;
+        }
+
+        function updateActiveModelBadge() {
+            const modelId = getActiveModelId();
+            elements.activeModelDisplay.textContent = modelId;
+        }
+
+        // Save State To LocalStorage
+        function saveState() {
+            localStorage.setItem('app_api_key', state.apiKey);
+            localStorage.setItem('app_api_url', state.apiUrl);
+            localStorage.setItem('app_selected_model', state.selectedModel);
+            localStorage.setItem('app_custom_model', state.customModel);
+            localStorage.setItem('app_system_prompt', state.systemPrompt);
+            localStorage.setItem('app_temperature', state.temperature.toString());
+            localStorage.setItem('app_max_tokens', state.maxTokens.toString());
+            localStorage.setItem('app_chat_history', JSON.stringify(state.messages));
+        }
+
+        // Extract Reasoning (<think>...</think>) from Content Stream
+        function parseReasoningAndContent(rawText) {
+            let reasoning = '';
+            let content = rawText;
+
+            if (content.includes('<think>')) {
+                const thinkParts = content.split('</think>');
+                if (thinkParts.length > 1) {
+                    reasoning = thinkParts[0].replace('<think>', '').trim();
+                    content = thinkParts.slice(1).join('</think>').trim();
+                } else {
+                    reasoning = content.replace('<think>', '').trim();
+                    content = '';
+                }
+            }
+
+            return { reasoning, content };
+        }
+
+        // Render Single Message Container
+        function createMessageElement(role, text = '', reasoningText = '') {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `flex gap-3 md:gap-4 ${role === 'user' ? 'justify-end' : 'justify-start'} text-sm`;
+
+            const isUser = role === 'user';
+            
+            const avatarHtml = isUser 
+                ? `<div class="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0 text-white font-semibold text-xs shadow-md shadow-indigo-600/20">Вы</div>`
+                : `<div class="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-indigo-400 font-semibold text-xs"><i data-lucide="bot" class="w-4 h-4"></i></div>`;
+
+            let reasoningHtml = '';
+            if (reasoningText) {
+                reasoningHtml = `
+                    <details class="reasoning-box bg-slate-900/90 border border-purple-500/30 rounded-xl mb-3 overflow-hidden transition-all">
+                        <summary class="flex items-center justify-between px-3 py-2 text-xs font-medium text-purple-300 bg-purple-950/20 cursor-pointer select-none hover:bg-purple-900/30 transition">
+                            <span class="flex items-center gap-1.5">
+                                🧠 <span>Ход мыслей модели</span>
+                            </span>
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-purple-400 transition-transform duration-200"></i>
+                        </summary>
+                        <div class="p-3 text-xs text-slate-300 font-mono leading-relaxed border-t border-purple-500/20 bg-slate-950/50 whitespace-pre-wrap">${reasoningText}</div>
+                    </details>
+                `;
+            }
+
+            const parsedMarkdown = isUser ? text : marked.parse(text || '');
+
+            const bubbleHtml = `
+                <div class="max-w-[85%] md:max-w-[80%] ${isUser ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-xs p-3.5 shadow-md' : 'bg-slate-900 border border-slate-800/90 text-slate-100 rounded-2xl rounded-tl-xs p-4 shadow-sm'}">
+                    ${reasoningHtml}
+                    <div class="message-content text-xs md:text-sm leading-relaxed ${isUser ? 'whitespace-pre-wrap' : 'prose prose-invert max-w-none'}">
+                        ${parsedMarkdown}
+                    </div>
+                </div>
+            `;
+
+            msgDiv.innerHTML = isUser ? (bubbleHtml + avatarHtml) : (avatarHtml + bubbleHtml);
+            return msgDiv;
+        }
+
+        // Render Entire History
+        function renderChatHistory() {
+            elements.chatMessages.innerHTML = '';
+            
+            if (state.messages.length === 0) {
+                elements.chatMessages.appendChild(elements.emptyState);
+                elements.emptyState.classList.remove('hidden');
+                return;
+            }
+
+            elements.emptyState.classList.add('hidden');
+
+            state.messages.forEach(msg => {
+                const { reasoning, content } = parseReasoningAndContent(msg.content);
+                const elem = createMessageElement(msg.role, content, reasoning || msg.reasoning);
+                elements.chatMessages.appendChild(elem);
+            });
+
+            lucide.createIcons();
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+        }
+
+        // Copy Code Functionality (iframe compliant fallback)
+        window.copyCodeToClipboard = function(button) {
+            const wrapper = button.closest('.code-wrapper');
+            const codeText = wrapper.querySelector('code').innerText;
+
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = codeText;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+
+                const span = button.querySelector('span');
+                const origText = span.textContent;
+                span.textContent = 'Скопировано!';
+                button.classList.add('text-emerald-400');
+                
+                setTimeout(() => {
+                    span.textContent = origText;
+                    button.classList.remove('text-emerald-400');
+                }, 2000);
+            } catch (err) {
+                showToast('Не удалось скопировать код', 'error');
+            }
+        };
+
+        // Send Message and Stream API Response
+        async function sendMessage() {
+            const userText = elements.userInput.value.trim();
+            if (!userText || state.isGenerating) return;
+
+            if (!state.apiKey) {
+                showToast('Пожалуйста, укажите ваш API Key в настройках!', 'error');
+                elements.sidebar.classList.remove('-translate-x-full');
+                elements.sidebarBackdrop.classList.remove('hidden');
+                return;
+            }
+
+            // Hide Empty State
+            elements.emptyState.classList.add('hidden');
+
+            // Append User Message
+            state.messages.push({ role: 'user', content: userText });
+            const userMsgElem = createMessageElement('user', userText);
+            elements.chatMessages.appendChild(userMsgElem);
+            
+            elements.userInput.value = '';
+            elements.userInput.style.height = 'auto';
+            elements.charCounter.textContent = '0 символов';
+            scrollToBottom();
+
+            // Prepare Assistant Message Placeholder
+            state.isGenerating = true;
+            elements.sendBtn.classList.add('hidden');
+            elements.stopBtn.classList.remove('hidden');
+            elements.statusIndicator.className = 'w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shadow-sm shadow-amber-500/50';
+            elements.statusText.textContent = 'Печатает...';
+
+            const assistantMsgElem = createMessageElement('assistant', '');
+            elements.chatMessages.appendChild(assistantMsgElem);
+            const contentContainer = assistantMsgElem.querySelector('.message-content');
+            contentContainer.classList.add('cursor-blink');
+
+            let rawAccumulatedText = '';
+            let rawReasoningText = '';
+
+            state.abortController = new AbortController();
+
+            try {
+                const apiMessages = [
+                    { role: 'system', content: state.systemPrompt },
+                    ...state.messages
+                ];
+
+                const response = await fetch(state.apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${state.apiKey}`,
+                        'Content-Type': 'application/json',
+                        'HTTP-Referer': window.location.href,
+                        'X-Title': 'Universal AI Studio'
+                    },
+                    body: JSON.stringify({
+                        model: getActiveModelId(),
+                        messages: apiMessages,
+                        temperature: state.temperature,
+                        max_tokens: state.maxTokens,
+                        stream: true
+                    }),
+                    signal: state.abortController.signal
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.error?.message || `Ошибка сервера (${response.status})`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // Keep incomplete line in buffer
+
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (trimmed.startsWith('data: ')) {
+                            const dataStr = trimmed.replace('data: ', '');
+                            if (dataStr === '[DONE]') break;
+
+                            try {
+                                const parsed = JSON.parse(dataStr);
+                                const delta = parsed.choices?.[0]?.delta;
+
+                                if (delta) {
+                                    if (delta.reasoning) {
+                                        rawReasoningText += delta.reasoning;
+                                    }
+                                    if (delta.content) {
+                                        rawAccumulatedText += delta.content;
+                                    }
+                                }
+                            } catch (e) {
+                                // Skip chunk parse errors
+                            }
+
+                            // Live UI update
+                            const { reasoning, content } = parseReasoningAndContent(rawAccumulatedText);
+                            const finalReasoning = reasoning || rawReasoningText;
+
+                            // Update reasoning box if present
+                            let reasoningBox = assistantMsgElem.querySelector('.reasoning-box');
+                            if (finalReasoning && !reasoningBox) {
+                                const bubble = assistantMsgElem.querySelector('.max-w-\\[85\\%\\]');
+                                const details = document.createElement('details');
+                                details.className = 'reasoning-box bg-slate-900/90 border border-purple-500/30 rounded-xl mb-3 overflow-hidden transition-all';
+                                details.open = true;
+                                details.innerHTML = `
+                                    <summary class="flex items-center justify-between px-3 py-2 text-xs font-medium text-purple-300 bg-purple-950/20 cursor-pointer select-none hover:bg-purple-900/30 transition">
+                                        <span class="flex items-center gap-1.5">🧠 <span>Ход мыслей модели</span></span>
+                                        <i data-lucide="chevron-down" class="w-4 h-4 text-purple-400"></i>
+                                    </summary>
+                                    <div class="reasoning-text p-3 text-xs text-slate-300 font-mono leading-relaxed border-t border-purple-500/20 bg-slate-950/50 whitespace-pre-wrap"></div>
+                                `;
+                                bubble.insertBefore(details, contentContainer);
+                                lucide.createIcons();
+                            }
+
+                            if (finalReasoning && assistantMsgElem.querySelector('.reasoning-text')) {
+                                assistantMsgElem.querySelector('.reasoning-text').textContent = finalReasoning;
+                            }
+
+                            contentContainer.innerHTML = marked.parse(content || '');
+                            scrollToBottom();
+                        }
+                    }
+                }
+
+                // Finalize response
+                const { reasoning, content } = parseReasoningAndContent(rawAccumulatedText);
+                state.messages.push({ 
+                    role: 'assistant', 
+                    content: content || rawAccumulatedText,
+                    reasoning: reasoning || rawReasoningText 
+                });
+                
+                saveState();
+
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    showToast('Генерация остановлена пользователем');
+                } else {
+                    showToast(err.message || 'Ошибка выполнения запроса', 'error');
+                    contentContainer.innerHTML += `<div class="text-rose-400 text-xs mt-2">⚠️ ${err.message}</div>`;
+                }
+            } finally {
+                state.isGenerating = false;
+                contentContainer.classList.remove('cursor-blink');
+                elements.sendBtn.classList.remove('hidden');
+                elements.stopBtn.classList.add('hidden');
+                elements.statusIndicator.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50';
+                elements.statusText.textContent = 'Готов к диалогу';
+                lucide.createIcons();
+            }
+        }
+
+        // Event Listeners Setup
+        function setupEventListeners() {
+            // Sidebar Toggles
+            elements.openSidebarBtn.addEventListener('click', () => {
+                elements.sidebar.classList.remove('-translate-x-full');
+                elements.sidebarBackdrop.classList.remove('hidden');
+            });
+
+            elements.closeSidebarBtn.addEventListener('click', () => {
+                elements.sidebar.classList.add('-translate-x-full');
+                elements.sidebarBackdrop.classList.add('hidden');
+            });
+
+            elements.sidebarBackdrop.addEventListener('click', () => {
+                elements.sidebar.classList.add('-translate-x-full');
+                elements.sidebarBackdrop.classList.add('hidden');
+            });
+
+            // API Input Controls
+            elements.apiKeyInput.addEventListener('input', (e) => {
+                state.apiKey = e.target.value.trim();
+                saveState();
+            });
+
+            elements.toggleKeyVisibilityBtn.addEventListener('click', () => {
+                const isPassword = elements.apiKeyInput.type === 'password';
+                elements.apiKeyInput.type = isPassword ? 'text' : 'password';
+            });
+
+            elements.apiUrlInput.addEventListener('input', (e) => {
+                state.apiUrl = e.target.value.trim();
+                saveState();
+            });
+
+            // Model Selection
+            elements.modelSelect.addEventListener('change', (e) => {
+                if (e.target.value === 'custom') {
+                    elements.customModelContainer.classList.remove('hidden');
+                } else {
+                    elements.customModelContainer.classList.add('hidden');
+                    state.selectedModel = e.target.value;
+                    updateActiveModelBadge();
+                    saveState();
+                }
+            });
+
+            elements.customModelInput.addEventListener('input', (e) => {
+                state.customModel = e.target.value.trim();
+                state.selectedModel = state.customModel;
+                updateActiveModelBadge();
+                saveState();
+            });
+
+            // Presets Buttons
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const presetKey = btn.dataset.preset;
+                    if (PRESETS[presetKey]) {
+                        elements.systemPromptInput.value = PRESETS[presetKey];
+                        state.systemPrompt = PRESETS[presetKey];
+                        saveState();
+                        showToast('Системный промпт обновлен!');
+                    }
+                });
+            });
+
+            elements.systemPromptInput.addEventListener('input', (e) => {
+                state.systemPrompt = e.target.value;
+                saveState();
+            });
+
+            // Sliders
+            elements.tempSlider.addEventListener('input', (e) => {
+                state.temperature = parseFloat(e.target.value);
+                elements.tempValue.textContent = state.temperature;
+                saveState();
+            });
+
+            elements.tokensSlider.addEventListener('input', (e) => {
+                state.maxTokens = parseInt(e.target.value);
+                elements.tokensValue.textContent = state.maxTokens;
+                saveState();
+            });
+
+            // Input Textarea Auto-expand & Submit
+            elements.userInput.addEventListener('input', () => {
+                elements.userInput.style.height = 'auto';
+                elements.userInput.style.height = `${Math.min(elements.userInput.scrollHeight, 192)}px`;
+                elements.charCounter.textContent = `${elements.userInput.value.length} символов`;
+            });
+
+            elements.userInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            elements.chatForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                sendMessage();
+            });
+
+            elements.stopBtn.addEventListener('click', () => {
+                if (state.abortController) {
+                    state.abortController.abort();
+                }
+            });
+
+            // Quick Prompt Chips
+            document.querySelectorAll('.quick-prompt').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    const promptText = chip.querySelector('span').textContent;
+                    elements.userInput.value = promptText;
+                    elements.userInput.dispatchEvent(new Event('input'));
+                    sendMessage();
+                });
+            });
+
+            // Clear Chat History
+            elements.clearChatBtn.addEventListener('click', () => {
+                state.messages = [];
+                saveState();
+                renderChatHistory();
+                showToast('История диалога очищена');
+            });
+
+            // Export Chat
+            elements.exportChatBtn.addEventListener('click', () => {
+                if (state.messages.length === 0) {
+                    showToast('История сообщений пуста', 'error');
+                    return;
+                }
+                const blob = new Blob([JSON.stringify(state.messages, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `ai-chat-history-${new Date().toISOString().slice(0, 10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+
+        // Window Load Event
+        window.onload = function() {
+            initUI();
+            setupEventListeners();
+        };
+    </script>
+</body>
+</html>
